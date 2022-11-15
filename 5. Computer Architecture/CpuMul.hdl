@@ -1,0 +1,70 @@
+// This file is part of nand2tetris, as taught in The Hebrew University,
+// and was written by Aviv Yaish, and is published under the Creative 
+// Common Attribution-NonCommercial-ShareAlike 3.0 Unported License 
+// https://creativecommons.org/licenses/by-nc-sa/3.0/
+
+// This chip is an extension of the regular CPU that uses the extended ALU.
+// If instruction[15]==0 or (instruction[14] and instruction[13] equals 1)
+// the CpuMul behave exactly as the same as the regular CPU.
+// If the instruction is a c-instruction and instruction[14] == 0, the chip will 
+// behave as follows:
+//  Instruction  | 12 | 11 | 10 |
+// ______________________________
+// dest=D<<;jump | 0  | 1  | 1  |
+// dest=A<<;jump | 0  | 1  | 0  |
+// dest=M<<;jump | 1  | 1  | 0  |
+// dest=D>>;jump | 0  | 0  | 1  |
+// dest=A>>;jump | 0  | 0  | 0  |
+// dest=M>>;jump | 1  | 0  | 0  |
+
+CHIP CpuMul {
+    IN  inM[16],         // M value input  (M = contents of RAM[A])
+        instruction[16], // Instruction for execution
+        reset;           // Signals whether to re-start the current
+                         // program (reset=1) or continue executing
+                         // the current program (reset=0).
+    OUT outM[16],        // M value output
+        writeM,          // Write into M? 
+        addressM[15],    // Address in data memory (of M)
+        pc[15];          // address of next instruction
+    
+    PARTS:
+
+   
+        Mux16(a = instruction , b = ALUout , sel = instruction[15], out = InputA);
+        Not(in = instruction[15], out = AInstraction);
+        And(a = instruction[15], b = instruction[5], out = CInstractionLoadA);
+        Or(a = AInstraction , b = CInstractionLoadA, out = LoadA);
+        ARegister(in = InputA, load = LoadA, out = outA, out[0..14] = addressM);
+
+        Mux16(a = outA, b = inM , sel = instruction[12], out = AluInput);
+        And(a = instruction[15], b = instruction[4], out = LoadD);
+        DRegister(in = ALUout, load = LoadD, out = outD);
+        
+        Mux16(a = outA, b =inM , sel = instruction[12], out = outAorM);
+        ExtendAlu(x = outD , y = outAorM, instruction= instruction[6..14], out = ALUout, out = outM, zr = zr , ng = ng);
+
+        And(a = instruction[15], b = instruction[3], out = writeM);
+
+        Not(in = ng, out = Notneg);
+        Not(in = zr, out = Notzero);
+        And(a = Notneg, b = Notzero, out = Pos);
+
+       And(a = instruction[15], b = instruction[2], out = j1);
+        And(a = instruction[15], b = instruction[1], out = j2);
+        And(a = instruction[15], b = instruction[0], out = j3);
+
+        And(a = j2, b = zr, out = cond1);
+         // checks j2 = 1 and alu output = 0
+
+        And(a = j1, b = ng, out = cond2);
+         // checks j1 = 1 and alu output < 0
+
+        And(a= j3, b = Pos, out = cond3);
+         // checks j3 = 1 and alu output > 0
+
+        Or(a = cond1, b = cond2, out = cond1Or2);
+        Or(a = cond1Or2, b = cond3, out = g);
+        Not(in = g, out = Notg);
+        PC(in = outA, load = g , inc = Notg, reset = reset, out[0..14] = pc);
+}
